@@ -94,7 +94,17 @@ class ScreenerApp(tk.Tk):
             self.break_window.lift()
 
     def _on_break_finished(self):
-        pass
+        # 1. Automatically close the break reminder window so it disappears
+        if self.break_window and self.break_window.winfo_exists():
+            try:
+                self.break_window.destroy()
+            except Exception:
+                pass
+            self.break_window = None
+
+        # 2. Automatically disappear back to background so screen is clear for work
+        if self.config.close_to_background:
+            self.hide_to_background(silent=True)
 
     def _on_break_window_closed(self):
         self.break_window = None
@@ -455,14 +465,15 @@ class ScreenerApp(tk.Tk):
         self.card2.val_label.config(text=str(today_stats.get("breaks_completed", 0)))
         self.card3.val_label.config(text=format_human_duration(today_stats.get("idle_seconds", 0)))
 
-    def hide_to_background(self):
+    def hide_to_background(self, silent: bool = False):
         """Hides the main window to run completely in the background."""
         self.withdraw()
         self.is_hidden_in_background = True
-        self.notifier.show_toast(
-            "Screener is in Background",
-            f"Active tracking continues. You'll be alerted when it's time for your {self.config.break_duration_minutes}-min break!"
-        )
+        if not silent:
+            self.notifier.show_toast(
+                "Screener is in Background",
+                f"Active tracking continues. You'll be alerted when it's time for your {self.config.break_duration_minutes}-min break!"
+            )
 
     def show_from_background(self):
         """Restores window from background."""

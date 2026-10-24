@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 import random
 from typing import Optional, Callable
+from pathlib import Path
 from ..tracker import ScreenTimeTracker, TrackerState
 
 TIPS = [
@@ -27,7 +28,6 @@ class BreakWindow(tk.Toplevel):
         self.resizable(False, False)
         self.configure(bg="#181824")
 
-        from pathlib import Path
         ico = Path(__file__).resolve().parent.parent.parent / "screener.ico"
         if ico.exists():
             try:
@@ -175,7 +175,7 @@ class BreakWindow(tk.Toplevel):
         # Bottom note about auto-detection
         self.footer_label = tk.Label(
             self,
-            text="💡 Tip: Simply walk away! Screener auto-detects 5 min of inactivity and resets your screen time.",
+            text="💡 Tip: Simply walk away! Screener auto-detects 5 min of inactivity and automatically closes this window.",
             font=("Segoe UI", 8),
             fg="#64748b",
             bg="#181824",
@@ -232,13 +232,11 @@ class BreakWindow(tk.Toplevel):
             self._draw_progress_bar(0.0)
 
         elif self.tracker.state == TrackerState.ACTIVE and self.tracker.session_active_seconds < 10:
-            # Break just completed or reset
-            self.timer_label.config(text="00:00", fg="#10b981")
-            self.title_label.config(text="Break Finished! Welcome Back 🎉")
-            self.subtitle_label.config(text="Your eyes are refreshed. Screen time reset.")
-            self.state_subtext.config(text="Great job taking care of your health!")
-            self.action_btn.config(text="Resume Work", bg="#10b981", command=self.on_close_clicked)
-            self._draw_progress_bar(1.0)
+            # 5-minute break completed! Automatically disappear window immediately!
+            self.destroy()
+            if self.on_closed:
+                self.on_closed()
+            return
 
         self.after(500, self._update_loop)
 
