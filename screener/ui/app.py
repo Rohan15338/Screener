@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import ctypes
 from typing import Optional
+from pathlib import Path
 from ..config import Config
 from ..storage import Storage
 from ..notifier import Notifier
@@ -23,7 +24,7 @@ def enable_windows_dpi_awareness():
                 pass
 
 def format_seconds(seconds: float) -> str:
-    s = int(seconds)
+    s = max(0, int(seconds))
     hours = s // 3600
     minutes = (s % 3600) // 60
     secs = s % 60
@@ -32,7 +33,7 @@ def format_seconds(seconds: float) -> str:
     return f"{minutes:02d}:{secs:02d}"
 
 def format_human_duration(seconds: float) -> str:
-    s = int(seconds)
+    s = max(0, int(seconds))
     hours = s // 3600
     minutes = (s % 3600) // 60
     if hours > 0:
@@ -55,14 +56,13 @@ class ScreenerApp(tk.Tk):
         self.break_window: Optional[BreakWindow] = None
         self.settings_window: Optional[SettingsDialog] = None
         self.is_hidden_in_background = False
+        self.show_countdown = True  # True: Countdown (35:00 -> 00:00), False: Elapsed (00:00 -> 35:00)
 
         self.title("Screener - Screen Time & Break Reminder")
         self.geometry("560x530")
         self.minsize(520, 480)
         self.configure(bg="#11111b")
 
-        # Set taskbar/window icon
-        from pathlib import Path
         ico = Path(__file__).resolve().parent.parent.parent / "screener.ico"
         if ico.exists():
             try:
@@ -89,7 +89,6 @@ class ScreenerApp(tk.Tk):
         self.tracker.on_break_completed = self._on_break_finished
 
     def _on_break_triggered(self):
-        # Always bring up the break window even if main window is in background
         if not self.break_window or not self.break_window.winfo_exists():
             self.break_window = BreakWindow(self, self.tracker, on_closed=self._on_break_window_closed)
             self.break_window.lift()
@@ -119,7 +118,6 @@ class ScreenerApp(tk.Tk):
         right_nav = tk.Frame(nav_frame, bg="#11111b")
         right_nav.pack(side="right")
 
-        # Status badge (Active / Idle / On Break / Paused)
         self.status_badge = tk.Label(
             right_nav,
             text="● Active",
@@ -131,7 +129,6 @@ class ScreenerApp(tk.Tk):
         )
         self.status_badge.pack(side="right")
 
-        # Idle countdown text
         self.idle_label = tk.Label(
             self,
             text="Input active: monitoring mouse & keyboard",
@@ -141,52 +138,67 @@ class ScreenerApp(tk.Tk):
         )
         self.idle_label.pack(anchor="w", padx=pad_x, pady=(0, 10))
 
-        # 2. Main Active Screen Time Card
+        # 2. Main Countdown Card
         timer_card = tk.Frame(self, bg="#181825", highlightbackground="#313244", highlightthickness=1)
         timer_card.pack(fill="x", padx=pad_x, pady=6)
 
         timer_card_content = tk.Frame(timer_card, bg="#181825")
         timer_card_content.pack(fill="x", padx=20, pady=16)
 
-        # Upper row: Target & Remaining
+        # Meta Row (Header label & elapsed/countdown toggle text)
         meta_row = tk.Frame(timer_card_content, bg="#181825")
         meta_row.pack(fill="x")
 
-        tk.Label(
+        self.timer_title = tk.Label(
             meta_row,
-            text="ACTIVE SCREEN TIME",
+            text="⏱️ COUNTDOWN TO 5-MIN BREAK",
             font=("Segoe UI", 9, "bold"),
+            fg="#38bdf8",
+            bg="#181825"
+        )
+        self.timer_title.pack(side="left")
+
+        self.elapsed_meta = tk.Label(
+            meta_row,
+            text="Active elapsed: 00:00",
+            font=("Segoe UI", 9),
             fg="#9399b2",
             bg="#181825"
-        ).pack(side="left")
-
-        self.next_break_label = tk.Label(
-            meta_row,
-            text=f"Next {self.config.break_duration_minutes}-min break in: {self.config.work_duration_minutes}:00",
-            font=("Segoe UI", 9),
-            fg="#a6adc8",
-            bg="#181825"
         )
-        self.next_break_label.pack(side="right")
+        self.elapsed_meta.pack(side="right")
 
-        # Huge Active Screen Time Digits
-        self.active_time_digits = tk.Label(
+        # Big Live Clock Digits (Shows COUNTDOWN by default!)
+        self.clock_digits = tk.Label(
             timer_card_content,
-            text="00:00:00",
-            font=("Consolas", 42, "bold"),
-            fg="#cdd6f4",
-            bg="#181825"
+            text=f"{self.config.work_duration_minutes}:00",
+            font=("Consolas", 44, "bold"),
+            fg="#38bdf8",
+            bg="#181825",
+            cursor="hand2"
         )
-        self.active_time_digits.pack(pady=(8, 6))
+        self.clock_digits.pack(pady=(6, 2))
+        self.clock_digits.bind("<Button-1>", lambda e: self.toggle_display_mode())
 
-        # Progress bar toward 5-minute break
+        # Toggle Hint under clock
+        self.toggle_hint = tk.Label(
+            timer_card_content,
+            text="Click clock to switch between Countdown & Elapsed",
+            font=("Segoe UI", 8),
+            fg="#585b70",
+            bg="#181825",
+            cursor="hand2"
+        )
+        self.toggle_hint.pack(pady=(0, 4))
+        self.toggle_hint.bind("<Button-1>", lambda e: self.toggle_display_mode())
+
+        # Progress bar
         self.progress_canvas = tk.Canvas(timer_card_content, height=10, bg="#11111b", highlightthickness=0)
         self.progress_canvas.pack(fill="x", pady=(4, 6))
 
         # Progress percent text
         self.progress_text = tk.Label(
             timer_card_content,
-            text="0% of current work interval",
+            text="0% of 35-minute work interval",
             font=("Segoe UI", 8),
             fg="#6c7086",
             bg="#181825"
@@ -210,7 +222,6 @@ class ScreenerApp(tk.Tk):
         action_bar = tk.Frame(self, bg="#11111b")
         action_bar.pack(fill="x", padx=pad_x, pady=6)
 
-        # Break Now Button
         self.btn_break = tk.Button(
             action_bar,
             text="☕ Take 5m Break",
@@ -227,7 +238,6 @@ class ScreenerApp(tk.Tk):
         )
         self.btn_break.pack(side="left", padx=(0, 6))
 
-        # Pause / Resume Button
         self.btn_pause = tk.Button(
             action_bar,
             text="⏸ Pause",
@@ -244,7 +254,6 @@ class ScreenerApp(tk.Tk):
         )
         self.btn_pause.pack(side="left", padx=(0, 6))
 
-        # Send to Background Button
         self.btn_bg = tk.Button(
             action_bar,
             text="🗕 Background",
@@ -261,7 +270,6 @@ class ScreenerApp(tk.Tk):
         )
         self.btn_bg.pack(side="left", padx=(0, 6))
 
-        # Reset Session Button
         self.btn_reset = tk.Button(
             action_bar,
             text="🔄 Reset",
@@ -278,7 +286,6 @@ class ScreenerApp(tk.Tk):
         )
         self.btn_reset.pack(side="left")
 
-        # Settings Button
         self.btn_settings = tk.Button(
             action_bar,
             text="⚙️ Settings",
@@ -322,6 +329,10 @@ class ScreenerApp(tk.Tk):
             command=self.quit_app
         )
         quit_btn.pack(side="right")
+
+    def toggle_display_mode(self):
+        self.show_countdown = not self.show_countdown
+        self._refresh_ui()
 
     def _create_stat_card(self, parent, title: str, default_val: str, color: str):
         card = tk.Frame(parent, bg="#181825", highlightbackground="#313244", highlightthickness=1)
@@ -368,18 +379,46 @@ class ScreenerApp(tk.Tk):
         self.after(1000, self._schedule_tick)
 
     def _refresh_ui(self):
-        self.active_time_digits.config(text=format_seconds(self.tracker.session_active_seconds))
-
         seconds_left = self.tracker.get_seconds_until_break()
-        self.next_break_label.config(
-            text=f"Next {self.config.break_duration_minutes}-min break in: {format_seconds(seconds_left)}"
-        )
-
+        active_sec = self.tracker.session_active_seconds
         target = self.tracker.get_work_target_seconds()
-        fraction = min(1.0, max(0.0, self.tracker.session_active_seconds / target)) if target > 0 else 0.0
-        self._draw_progress(fraction)
-        self.progress_text.config(text=f"{int(fraction * 100)}% of {self.config.work_duration_minutes}-minute work interval")
 
+        # Update primary big digits based on current mode & state
+        if self.tracker.state == TrackerState.ON_BREAK:
+            rem_break = max(0.0, self.tracker.break_remaining_seconds)
+            self.clock_digits.config(text=format_seconds(rem_break), fg="#10b981")
+            self.timer_title.config(text="☕ 5-MIN BREAK IN PROGRESS", fg="#10b981")
+            self.elapsed_meta.config(text="Step away & rest your eyes")
+            total_b = self.tracker.get_break_target_seconds()
+            b_frac = (1.0 - (rem_break / total_b)) if total_b > 0 else 1.0
+            self._draw_progress(b_frac)
+            self.progress_text.config(text=f"Break progress: {int(b_frac * 100)}%")
+
+        elif self.tracker.state == TrackerState.BREAK_DUE:
+            self.clock_digits.config(text="00:00", fg="#ef4444")
+            self.timer_title.config(text="⚠️ 35-MIN LIMIT REACHED", fg="#ef4444")
+            self.elapsed_meta.config(text="Break Due!")
+            self._draw_progress(1.0)
+            self.progress_text.config(text="Time to take your 5-minute break away!")
+
+        else:
+            # Active / Idle / Paused
+            if self.show_countdown:
+                self.clock_digits.config(text=format_seconds(seconds_left), fg="#38bdf8")
+                self.timer_title.config(text=f"⏱️ COUNTDOWN TO {self.config.break_duration_minutes}-MIN BREAK", fg="#38bdf8")
+                self.elapsed_meta.config(text=f"Active elapsed: {format_seconds(active_sec)}")
+            else:
+                self.clock_digits.config(text=format_seconds(active_sec), fg="#cdd6f4")
+                self.timer_title.config(text="⌛ ACTIVE TIME ELAPSED", fg="#a6adc8")
+                self.elapsed_meta.config(text=f"Remaining: {format_seconds(seconds_left)}")
+
+            fraction = min(1.0, max(0.0, active_sec / target)) if target > 0 else 0.0
+            self._draw_progress(fraction)
+            self.progress_text.config(
+                text=f"{int(fraction * 100)}% elapsed ({format_seconds(seconds_left)} until 5-min break)"
+            )
+
+        # Status badge & idle info
         if self.tracker.state == TrackerState.ACTIVE:
             self.status_badge.config(text="● Active", fg="#10b981", bg="#142e2b")
             idle_sec = int(self.tracker.current_idle_duration)
