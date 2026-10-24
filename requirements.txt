@@ -1,0 +1,2 @@
+# Screener uses Python Standard Library on Windows (tkinter, ctypes, winsound).
+# No external third-party dependencies are required.

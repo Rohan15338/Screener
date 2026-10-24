@@ -1,0 +1,13 @@
+{
+    "work_duration_minutes": 35,
+    "break_duration_minutes": 5,
+    "idle_threshold_seconds": 60,
+    "pre_warning_minutes": 1,
+    "sound_enabled": true,
+    "notification_enabled": true,
+    "auto_complete_break": true,
+    "strict_mode": false,
+    "close_to_background": true,
+    "start_on_boot": false,
+    "daily_limit_hours": 0.0
+}
